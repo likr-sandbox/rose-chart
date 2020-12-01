@@ -2,25 +2,6 @@
   <svg :viewBox="`0 0 ${width} ${height}`">
     <g :transform="`translate(${width / 2},${height / 2})`">
       <g>
-        <text
-          text-anchor="middle"
-          dominant-baseline="central"
-          :fill="fontColor"
-          :font-size="titleFontSize"
-          :font-family="fontFamily"
-          font-weight="bold"
-        >
-          <tspan
-            v-for="(text, i) in title"
-            :key="i"
-            x="0"
-            :y="titleRow * i + (-titleRow * (title.length - 1)) / 2"
-          >
-            {{ text }}
-          </tspan>
-        </text>
-      </g>
-      <g>
         <g v-for="(group, i) in values" :key="group.label">
           <line
             :x1="innerRadius * Math.cos(groupRotate(i) + dt / 2)"
@@ -32,35 +13,40 @@
         </g>
       </g>
       <g>
-        <g v-for="(group, i) in values" :key="group.label">
-          <text
-            :x="(outerRadius + 3) * Math.cos(groupRotate(i))"
-            :y="(outerRadius + 3) * Math.sin(groupRotate(i))"
-            :text-anchor="axisTextAnchor(groupRotate(i))"
-            :dominant-baseline="axisDominantBaseline(groupRotate(i))"
-            :fill="fontColor"
-            :font-size="groupFontSize"
-            :font-family="fontFamily"
-            font-weight="bold"
-          >
-            {{ group.label }}
-          </text>
+        <g v-for="v in ticks" :key="v">
+          <circle cx="0" cy="0" :r="r(v)" fill="none" :stroke="lineColor" />
         </g>
       </g>
       <g>
-        <g v-for="v in ticks" :key="v">
-          <circle cx="0" cy="0" :r="r(v)" fill="none" :stroke="lineColor" />
-          <text
-            x="0"
-            :y="-r(v)"
-            text-anchor="middle"
-            dominant-baseline="central"
-            :fill="fontColor"
-            :font-size="tickFontSize"
-            :font-family="fontFamily"
+        <g v-for="(group, i) in values" :key="group.label">
+          <foreignObject
+            :x="
+              (outerRadius + groupLabelMargin) * Math.cos(groupRotate(i)) +
+              foreignObjectOffsetX(groupRotate(i))
+            "
+            :y="
+              (outerRadius + groupLabelMargin) * Math.sin(groupRotate(i)) +
+              foreignObjectOffsetY(groupRotate(i))
+            "
+            :width="foreignObjectSize + 'px'"
+            :height="foreignObjectSize + 'px'"
           >
-            {{ v }}
-          </text>
+            <div
+              :style="{
+                justifyContent: foreignObjectJustifyContent(groupRotate(i)),
+                alignItems: foreignObjectAlignItems(groupRotate(i)),
+              }"
+            >
+              <span
+                :style="{
+                  color: fontColor,
+                  fontSize: fontSize + 'px',
+                  fontFamily,
+                }"
+                v-html="group.label"
+              ></span>
+            </div>
+          </foreignObject>
         </g>
       </g>
       <g>
@@ -71,22 +57,17 @@
               :fill="item.color"
               :opacity="barOpacity"
             />
-          </g>
-        </g>
-      </g>
-      <g>
-        <g v-for="(group, i) in values" :key="group.label">
-          <g v-for="(item, j) in group.children" :key="item.label">
             <text
-              :x="(innerRadius - 8) * Math.cos(itemRotate(i, j) + barAngle / 2)"
-              :y="(innerRadius - 8) * Math.sin(itemRotate(i, j) + barAngle / 2)"
-              text-anchor="middle"
-              dominant-baseline="central"
+              :x="(r(item.value) + valueLabelMargin) * Math.cos(groupRotate(i))"
+              :y="(r(item.value) + valueLabelMargin) * Math.sin(groupRotate(i))"
+              :text-anchor="axisTextAnchor(groupRotate(i))"
+              :dominant-baseline="axisDominantBaseline(groupRotate(i))"
               :fill="fontColor"
-              :font-size="itemFontSize"
+              :font-size="fontSize"
               :font-family="fontFamily"
+              font-weight="bold"
             >
-              {{ item.label }}
+              {{ item.value.toFixed(0) }}%
             </text>
           </g>
         </g>
@@ -96,24 +77,26 @@
 </template>
 <script>
 export default {
+  data() {
+    return {
+      barOpacity: 1,
+      barAngle: 0.35,
+      barMarginAngle: 0.05,
+      lineColor: "#EDEDF0",
+      fontColor: "#5D5D5D",
+      fontFamily: `"游ゴシック", "Yu Gothic", "游ゴシック体", YuGothic, sans-serif`,
+      ticks: [0, 20, 40, 60, 80, 100],
+      foreignObjectSize: 200,
+    };
+  },
   props: [
     "innerRadius",
     "outerRadius",
     "margin",
-    "titleMargin",
-    "barOpacity",
-    "barAngle",
-    "barMarginAngle",
-    "lineColor",
-    "fontColor",
-    "fontFamily",
-    "tickFontSize",
-    "groupFontSize",
-    "itemFontSize",
-    "titleFontSize",
-    "title",
+    "groupLabelMargin",
+    "valueLabelMargin",
+    "fontSize",
     "values",
-    "ticks",
   ],
   computed: {
     width: function () {
@@ -125,14 +108,11 @@ export default {
     dt: function () {
       return (Math.PI * 2) / this.values.length;
     },
-    titleRow: function () {
-      return this.titleFontSize + this.titleMargin;
-    },
   },
   methods: {
     groupRotate: function (i) {
       const t0 = -Math.PI / 2;
-      return t0 + this.dt * i + this.dt / 2;
+      return t0 + this.dt * i + this.dt;
     },
     itemRotate: function (i, j) {
       const a = this.barAngle + this.barMarginAngle;
@@ -174,6 +154,61 @@ export default {
       }
       return sinT > 0 ? "text-before-edge" : "text-after-edge";
     },
+    foreignObjectOffsetX: function (t) {
+      const h = this.axisTextAnchor(t);
+      if (h === "start") {
+        return 0;
+      } else if (h === "end") {
+        return -this.foreignObjectSize;
+      } else {
+        return -this.foreignObjectSize / 2;
+      }
+    },
+    foreignObjectOffsetY: function (t) {
+      const v = this.axisDominantBaseline(t);
+      if (v === "text-after-edge") {
+        return -this.foreignObjectSize;
+      } else if (v === "text-before-edge") {
+        return 0;
+      } else {
+        return -this.foreignObjectSize / 2;
+      }
+    },
+    foreignObjectJustifyContent: function (t) {
+      const h = this.axisTextAnchor(t);
+      if (h === "start") {
+        return "flex-start";
+      } else if (h === "end") {
+        return "flex-end";
+      } else {
+        return "center";
+      }
+    },
+    foreignObjectAlignItems: function (t) {
+      const v = this.axisDominantBaseline(t);
+      if (v === "text-after-edge") {
+        return "flex-end";
+      } else if (v === "text-before-edge") {
+        return "flex-start";
+      } else {
+        return "center";
+      }
+    },
   },
 };
 </script>
+<style scoped>
+foreignObject > div > span {
+  font-weight: bold;
+  margin: 0;
+  text-align: center;
+  line-height: 1.6;
+}
+foreignObject > div {
+  display: flex;
+  height: 100%;
+}
+text {
+  transform-origin: 0px 0px;
+}
+</style>
